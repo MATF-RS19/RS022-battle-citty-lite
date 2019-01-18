@@ -17,7 +17,7 @@ GameScene::GameScene(QGraphicsView* parrent)
     _parrent = parrent;
     _parrent->setFocusPolicy(Qt::StrongFocus);
 
-    this->setSceneRect(0, 0, _sizeOfScene, _sizeOfScene);
+    setSceneRect(0, 0, _sizeOfScene, _sizeOfScene);
     setBackgroundBrush(QColor(0, 0, 0));
 
     _levelTicker.setInterval(50);
@@ -27,46 +27,29 @@ GameScene::GameScene(QGraphicsView* parrent)
     connect(&_npcCreating, &QTimer::timeout,
             this, &GameScene::npcFactory);
 
-    _boostShowerInterval.setInterval(5000);
-    QObject::connect(&_boostShowerInterval, &QTimer::timeout,
-                     this, &GameScene::showBoost);
-    _boost = new Boost();
-
     setFocus();
 }
 
 GameScene::~GameScene()
 {
-    deleteAllVectors();
+    qDeleteAll(_npcs);
+    qDeleteAll(_bullets);
 }
-void GameScene::deleteAllVectors()
-{
-    foreach(Npc* t, _npcs)
-    {
-        if(t != nullptr)
-            delete t;
-    }
 
-    foreach(Bullet* t, bullets)
-    {
-        if(t != nullptr)
-            delete t;
-    }
-}
 
 void GameScene::abort()
 {
     _levelTicker.stop();
     _npcCreating.stop();
-    _boostShowerInterval.stop();
     _shooting1.stop();
     _shooting2.stop();
 
-    deleteAllVectors();
+    qDeleteAll(_npcs);
+    qDeleteAll(_bullets);
     _npcs.clear();
-    bullets.clear();
+    _bullets.clear();
 
-    this->clear();
+    clear();
 }
 
 void GameScene::resume()
@@ -74,7 +57,6 @@ void GameScene::resume()
     _parrent->setFocus();
     _levelTicker.start();
     _npcCreating.start();
-    _boostShowerInterval.start();
     _shooting1.start();
     _shooting2.start();
 }
@@ -94,13 +76,13 @@ void GameScene::initializeLevel(int level, int numOfPlayers)
     {
         _npcVector[i]--;
         _npcs.append(new Npc(i * 300, 0, i+1));
-        this->addItem(_npcs.back());
+        addItem(_npcs.back());
 
         emit npcCreated(20 - i);
     }
     Player *igrac1 = new Player(1);
     _players[0] = igrac1;
-    this->addItem(igrac1);
+    addItem(igrac1);
 
     igrac1->setDown(false);
     igrac1->setUp(false);
@@ -116,7 +98,7 @@ void GameScene::initializeLevel(int level, int numOfPlayers)
     if (--numOfPlayers > 0)
     {
         Player *igrac2 = new Player(2);
-        this->addItem(igrac2);
+        addItem(igrac2);
         _players[1] = igrac2;
 
         igrac2->setDown(false);
@@ -133,7 +115,6 @@ void GameScene::initializeLevel(int level, int numOfPlayers)
     else
         _players[1] = nullptr;
 
-    _boostShowerInterval.start();
     _npcCreating.start();
     _levelTicker.start();
 }
@@ -183,30 +164,35 @@ void GameScene::update()
     if(_players[1] != nullptr)
         _players[1]->colisionDetection();
 
-    foreach(Bullet* b, bullets) {
-        QList<QGraphicsItem*> list = b->collidingItems();
-        if (list.size() > 0) {
-            b->_moving = false;
-            b->setX(-100);
-            b->setY(-100);
-            foreach(QGraphicsItem* i , list) {
-                this->removeItem(i);
-                if (i == _phoenix)
-                    emit exitRequested();
-                
-            }
-        }
-    }
-    //svi: npc, scena, player, tank
-    //m: boost, , gscene, help, pause,
-    //n: block, bullet, gscene,
-    //i: gproxy, gscene, gwidget, mainw,
-
     foreach(Npc* n, _npcs)
     {
         n->colisionDetection();
     }
 
+    int index = 0;
+    foreach(Bullet* b, _bullets)
+    {
+        QList<QGraphicsItem*> list = b->collidingItems();
+        if (list.size() > 0)
+        {
+            foreach(QGraphicsItem* i , list)
+            {
+                removeItem(i);
+                if (i == _phoenix)
+                {
+                    _npcCreating.stop();
+                    _shooting1.stop();
+                    _shooting2.stop();
+                    _levelTicker.stop();
+                    emit exitRequested();
+                }
+            }
+            delete b;
+            if(index < _bullets.length())
+                _bullets.remove(index);
+        }
+        index++;
+    }
 
     _parrent->update();
 }
@@ -230,25 +216,25 @@ void GameScene::printMap(const QVector<QVector<int>> matrixOfLevel)
         {
             if (matrixOfLevel[i][j] == 1) {
                 Block *b = new Block(25*j, 25*i, true, Block::Material::brick, ":/blocks/brick.png");
-                this->addItem(b);
+                addItem(b);
             }
             else if (matrixOfLevel[i][j] == 2) {
                 Block *b = new Block(25*j, 25*i, true, Block::Material::stone, ":/blocks/stone.png");
-                this->addItem(b);
+                addItem(b);
             }
             else if (matrixOfLevel[i][j] == 3) {
                 Block *b = new Block(25*j, 25*i, true, Block::Material::stone, ":/blocks/water.png");
-                this->addItem(b);
+                addItem(b);
             }
             else if (matrixOfLevel[i][j] == 4) {
                 Block *b = new Block(25*j, 25*i, true, Block::Material::stone, ":/blocks/bush.png");
-                this->addItem(b);
+                addItem(b);
             }
         }
     }
     // Add phoenix to the scene
     _phoenix = new Block(300, 600, ":/blocks/phoenix.png");
-    this->addItem(_phoenix);
+    addItem(_phoenix);
 }
 
 int GameScene::roulet()
@@ -273,7 +259,7 @@ int GameScene::roulet()
 
 void GameScene::moveBullets()
 {
-    foreach(Bullet* b, bullets)
+    foreach(Bullet* b, _bullets)
         b->moveBullet();
 }
 
@@ -295,7 +281,7 @@ void GameScene::npcFactory()
     //napravi npc na toj poziciji
     Npc * b = new Npc(baza * 300, 0, 2 + npcType);
     _npcs.append(b);
-    this->addItem(b);
+    addItem(b);
 //    b->_shootTimer.start();
 
     //emituj hajdovanje labele
@@ -325,8 +311,8 @@ void GameScene::moveNpcs()
     foreach(Npc* n, _npcs)
     {
         if (n->shootingEnabled == true) {
-            bullets.append(n->shoot());
-            this->addItem(bullets.back());
+            _bullets.append(n->shoot());
+            addItem(_bullets.back());
         }
         if(n != nullptr)
         {
@@ -371,27 +357,14 @@ void GameScene::onBomb()
     _npcs.clear();
 }
 
-void GameScene::showBoost()
-{
-    srand(time(NULL));
-
-    _boost->setX(rand()%(25*26));
-    _boost->setY(rand()%(25*26));
-    _boost->generateRandomPowerup();
-    _boost->setTexture(_boost->getPowerup());
-    this->addItem(_boost);
-}
-
 
 void GameScene::keyPressEvent(QKeyEvent *event)
 {
     //consider player1
     if(_players[0] != nullptr)
     {
-        qDebug() << "in players one area";
         if(event->key() == Qt::Key_W)
         {
-            qDebug() << "in player1 up";
             _players[0]->setUp(true);
         }
         else if (event->key() == Qt::Key_A)
@@ -409,8 +382,8 @@ void GameScene::keyPressEvent(QKeyEvent *event)
         if(event->key() == Qt::Key_F) {
             if (_players[0]->shootingEnabled == true) {
                 _shooting1.start();
-                bullets.append(_players[0]->shoot());
-                this->addItem(bullets.back());
+                _bullets.append(_players[0]->shoot());
+                addItem(_bullets.back());
             }
         }
     }
@@ -418,10 +391,8 @@ void GameScene::keyPressEvent(QKeyEvent *event)
     //consider player2
     if(_players[1] != nullptr)
     {
-        qDebug() << "in player2s area";
         if(event->key() == Qt::Key_Up)
         {
-            qDebug() << "in player2 up";
             _players[1]->setUp(true);
         }
         else if (event->key() == Qt::Key_Left)
@@ -439,8 +410,8 @@ void GameScene::keyPressEvent(QKeyEvent *event)
         if(event->key() == Qt::Key_L) {
             if (_players[1]->shootingEnabled == true) {
                 _shooting2.start();
-                bullets.append(_players[1]->shoot());
-                this->addItem(bullets.back());
+                _bullets.append(_players[1]->shoot());
+                addItem(_bullets.back());
             }
         }
     }
@@ -448,7 +419,6 @@ void GameScene::keyPressEvent(QKeyEvent *event)
     if(event->key() == Qt::Key_H)
     {
         _npcCreating.stop();
-        _boostShowerInterval.stop();
         _shooting1.stop();
         _shooting2.stop();
         _levelTicker.stop();
@@ -457,7 +427,6 @@ void GameScene::keyPressEvent(QKeyEvent *event)
     if(event->key() == Qt::Key_P)
     {
         _npcCreating.stop();
-        _boostShowerInterval.stop();
         _shooting1.stop();
         _shooting2.stop();
         _levelTicker.stop();
@@ -467,7 +436,6 @@ void GameScene::keyPressEvent(QKeyEvent *event)
     if(event->key() == Qt::Key_Escape)
     {
         _npcCreating.stop();
-        _boostShowerInterval.stop();
         _shooting1.stop();
         _shooting2.stop();
         _levelTicker.stop();
